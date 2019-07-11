@@ -1,0 +1,31 @@
+#! /usr/bin/env perl6
+
+use JSON::Fast;
+
+sub MAIN(Str:D $org-name, Bool :$dry-run) {
+    my $proc = run <<hub api --paginate "orgs/{$org-name}/repos">>, :out, :err;
+    unless $proc {
+        my $msg = from-json($proc.out.slurp(:close))<message>;
+        note "Failed to fetch repository list for '{$org-name}': {$msg}";
+        exit 1;
+    }
+
+    # XXX This relies on each page being a single line, which we aren't
+    # guaranteed.  JSON::Fast has a proper way to handle this
+    my @repos = $proc.out.slurp(:close).lines.map: {
+        from-json($_).Slip;
+    }
+
+    for @repos -> $repo {
+        my $url = $repo<ssh_url>;
+
+        if ! $repo<name>.IO.d {
+            if $dry-run {
+                say "Missing {$org-name}/{$repo<name>}";
+            } else {
+                run <<git clone $url>>;
+            }
+        }
+    }
+}
+
